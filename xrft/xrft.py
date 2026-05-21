@@ -945,7 +945,7 @@ def _groupby_bins_agg(
     return result
 
 
-def isotropize(ps, fftdim, nfactor=4, truncate=True, complx=False):
+def isotropize(ps, fftdim, nfactor=4, truncate=True, complx=False, meth="mean"):
     """
     Isotropize a 2D power spectrum or cross spectrum
     by taking an azimuthal average.
@@ -969,6 +969,11 @@ def isotropize(ps, fftdim, nfactor=4, truncate=True, complx=False):
         the Nyquist wavenumber.
     complx : bool, optional
         If True, isotropize allows for complex numbers.
+    meth : str, optional
+        Method of isotropization and takes either "sum" or "mean";
+        "sum" will satisfy the isotropic Parseval's equality.
+        When the aspect ratio of the Fourier dimensions is highly anisotropic,
+        "mean" is recommended.
     """
 
     # compute radial wavenumber bins
@@ -992,22 +997,28 @@ def isotropize(ps, fftdim, nfactor=4, truncate=True, complx=False):
 
     if complx:
         iso_ps = (
-            _groupby_bins_agg(ps, freq_r, bins=nbins, func="sum", dtype=np.complex128)
+            _groupby_bins_agg(ps, freq_r, bins=nbins, func=meth, dtype=np.complex128)
             .rename({"freq_r_bins": "freq_r"})
             .drop_vars("freq_r")
         )
     else:
         iso_ps = (
-            _groupby_bins_agg(ps, freq_r, bins=nbins, func="sum")
+            _groupby_bins_agg(ps, freq_r, bins=nbins, func=meth)
             .rename({"freq_r_bins": "freq_r"})
             .drop_vars("freq_r")
         )
     iso_ps.coords["freq_r"] = kr.data
 
     if truncate:
-        return iso_ps.dropna("freq_r")
+        if meth == "mean":
+            return (iso_ps * iso_ps.freq_r * 2 * np.pi).dropna("freq_r")
+        else:
+            return iso_ps.dropna("freq_r")
     else:
-        return iso_ps
+        if meth == "mean":
+            return iso_ps * iso_ps.freq_r * 2 * np.pi
+        else:
+            return iso_ps
 
 
 def isotropic_power_spectrum(
@@ -1021,6 +1032,7 @@ def isotropic_power_spectrum(
     window_correction=False,
     nfactor=4,
     truncate=False,
+    isometh="mean",
     **kwargs,
 ):
     """
@@ -1063,6 +1075,11 @@ def isotropic_power_spectrum(
     truncate : bool, optional
         If True, the spectrum will be truncated for wavenumbers larger than
         the Nyquist wavenumber.
+    isometh : str, optional
+        Method of isotropization and takes either "sum" or "mean";
+        "sum" will satisfy the isotropic Parseval's equality.
+        When the aspect ratio of the Fourier dimensions is highly anisotropic,
+        "mean" is recommended.
 
     Returns
     -------
@@ -1092,7 +1109,7 @@ def isotropic_power_spectrum(
 
     fftdim = ["freq_" + d for d in dim]
 
-    return isotropize(ps, fftdim, nfactor=nfactor, truncate=truncate)
+    return isotropize(ps, fftdim, nfactor=nfactor, truncate=truncate, meth=isometh)
 
 
 def isotropic_cross_spectrum(
@@ -1107,6 +1124,7 @@ def isotropic_cross_spectrum(
     window_correction=False,
     nfactor=4,
     truncate=False,
+    isometh="mean",
     **kwargs,
 ):
     """
@@ -1151,6 +1169,11 @@ def isotropic_cross_spectrum(
     truncate : bool, optional
         If True, the spectrum will be truncated for wavenumbers larger than
         the Nyquist wavenumber.
+    isometh : str, optional
+        Method of isotropization and takes either "sum" or "mean";
+        "sum" will satisfy the isotropic Parseval's equality.
+        When the aspect ratio of the Fourier dimensions is highly anisotropic,
+        "mean" is recommended.
 
     Returns
     -------
@@ -1184,7 +1207,9 @@ def isotropic_cross_spectrum(
 
     fftdim = ["freq_" + d for d in dim]
 
-    return isotropize(cs, fftdim, nfactor=nfactor, truncate=truncate, complx=True)
+    return isotropize(
+        cs, fftdim, nfactor=nfactor, truncate=truncate, complx=True, meth=isometh
+    )
 
 
 def fit_loglog(x, y):
